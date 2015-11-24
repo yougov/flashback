@@ -7,6 +7,7 @@ import pymongo
 import string
 import threading
 import constants
+import gzip
 
 
 def _make_logger():
@@ -57,8 +58,12 @@ def create_tailing_cursor(collection, criteria, oplog=False):
     criteria is a query dict (for filtering op types, targeting a specifc set
     of collections, etc.).
     """
-    tailer = collection.find(
-        criteria, slave_okay=True, tailable=True, await_data=True)
+    if pymongo_version_3():
+        tailer = collection.find(
+            criteria,  cursor_type=pymongo.cursor.CursorType.TAILABLE_AWAIT)
+    else:
+        tailer = collection.find(
+            criteria, slave_okay=True, tailable=True, await_data=True)
 
     # Set oplog_replay on the cursor, which allows queries against the oplog to run much faster
     if oplog:
@@ -167,3 +172,18 @@ class DictionaryCopier(object):
         for field in fields:
             if field in self.src:
                 self.dest[field] = self.src[field]
+
+def gz_open(*args, **kw):
+    """Return a fd to a gzip compressed file if config.compress_files is
+True, otherwise return a fd to an uncompressed file.
+
+    """
+                    
+    if config.DB_CONFIG["compress_files"]:
+        return gzip.open(*args, **kw)
+    else:
+        return open(*args, **kw)
+
+        
+def pymongo_version_3():
+    return pymongo.version.split('.')[0] == '3'

@@ -270,7 +270,7 @@ class MongoQueryRecorder(object):
     def connect_mongo(self, server_config):
         """Connect to MongoDB and return an initialized MongoClient"""
         if 'replSet' not in server_config:
-            client = MongoClient(server_config['mongodb_uri'], slaveOk=True)
+            client = MongoClient(server_config['mongodb_uri'], read_preference = pymongo.read_preferences.ReadPreference.SECONDARY) 
         else:
             client = MongoClient(server_config['mongodb_uri'], slaveOk=True, replicaset=server_config['replSet'])
 
