@@ -39,14 +39,14 @@ def merge_to_final_output(oplog_output_file, profiler_output_files, output_file)
         to pull the docs from differnt servers, as a result it's hard to do the
         on-time merge since you cannot determine if some "old" entries will come
         later."""
-    oplog = open(oplog_output_file, "rb")
+    oplog = utils.gz_open(oplog_output_file, "rb")
 
     # create a map of profiler file names to files
     profiler_files = {}
     for profiler_file in profiler_output_files:
-        profiler_files[profiler_file] = open(profiler_file, "rb")
+        profiler_files[profiler_file] = utils.gz_open(profiler_file, "rb")
 
-    output = open(output_file, "wb")
+    output = utils.gz_open(output_file, "wb")
     logger = utils.LOG
 
     logger.info("Starts completing the insert options")
@@ -67,6 +67,7 @@ def merge_to_final_output(oplog_output_file, profiler_output_files, output_file)
     noninserts = 0
     severe_inconsistencies = 0
     mild_inconsistencies = 0
+    dropped_updates = 0
 
     # read docs until either we exhaust the oplog or all ops in the profile logs
     while oplog_doc and len(profiler_docs) > 0:
@@ -82,7 +83,12 @@ def merge_to_final_output(oplog_output_file, profiler_output_files, output_file)
         doc = utils.unpickle(profiler_files[key[1]])
         if doc:
             profiler_docs[(doc["ts"], key[1])] = doc
-
+        # profile update updateobjs dict may get truncated to a 50k
+        # string for larg dicts. This crashes replay, so filter them
+        # out here.
+        if profiler_doc['op'] == 'update' and isinstance(profiler_doc['updateobj'], basestring):
+            dropped_updates += 1
+            continue
         # If the retrieved operation is not an insert, we can simply dump it
         # to the output file. Otherwise, we need to cross-reference the
         # profiler's insert operation with an oplog entry (because the
@@ -139,8 +145,10 @@ def merge_to_final_output(oplog_output_file, profiler_output_files, output_file)
     logger.info("Finished completing the insert options, %d inserts and"
                 " %d noninserts\n"
                 "  severe ts incosistencies: %d\n"
-                "  mild ts incosistencies: %d\n", inserts, noninserts,
-                severe_inconsistencies, mild_inconsistencies)
+                "  mild ts incosistencies: %d\n"
+                "dropped updates: %d\n",
+                inserts, noninserts,
+                severe_inconsistencies, mild_inconsistencies, dropped_updates)
 
     for f in [oplog, output]:
         f.close()
