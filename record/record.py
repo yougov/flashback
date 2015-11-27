@@ -269,10 +269,14 @@ class MongoQueryRecorder(object):
 
     def connect_mongo(self, server_config):
         """Connect to MongoDB and return an initialized MongoClient"""
-        if 'replSet' not in server_config:
-            client = MongoClient(server_config['mongodb_uri'], read_preference = pymongo.read_preferences.ReadPreference.SECONDARY) 
+        if utils.pymongo_version_3():
+            kws = {'read_preference' : pymongo.read_preferences.ReadPreference.SECONDARY}
         else:
-            client = MongoClient(server_config['mongodb_uri'], slaveOk=True, replicaset=server_config['replSet'])
+            kws = {'slaveOk':True}
+        if 'replSet' not in server_config:
+            client = MongoClient(server_config['mongodb_uri'], **kws)
+        else:
+            client = MongoClient(server_config['mongodb_uri'], replicaset=server_config['replSet'], **kws)
 
         if server_config.get('auth_db') is not None \
            and server_config.get('user') is not None \
@@ -431,7 +435,7 @@ class MongoQueryRecorder(object):
 
         # We'll dump the recorded activities to `files`.
         files = {
-            "oplog": open(self.config["oplog_output_file"], "wb")
+            "oplog": utils.gz_open(self.config["oplog_output_file"], "wb")
         }
         tailer_names = []
         profiler_output_files = []
@@ -444,7 +448,7 @@ class MongoQueryRecorder(object):
                 tailer_names.append(tailer_name)
                 fname = "%s_%s" % (self.config["output_file"], tailer_name)
                 profiler_output_files.append(fname)
-                files[tailer_name] = open(fname, "wb")
+                files[tailer_name] = utils.gz_open(fname, "wb")
         tailer_names.append("oplog")
 
         state = MongoQueryRecorder.RecordingState(tailer_names)
